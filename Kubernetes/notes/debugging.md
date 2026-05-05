@@ -207,6 +207,8 @@ For the backend, confirm:
 
 ```text
 DB_HOST=postgres
+DB_NAME=postgres
+DB_USER=postgres
 ```
 
 ---
@@ -252,6 +254,7 @@ kubectl logs deployment/postgres
 Common causes:
 
 * `DB_HOST` does not match the Service name
+* `myapp-config` or `myapp-secret` does not exist
 * Postgres Pod is not running
 * Postgres Service selector does not match Pod labels
 * Database password is wrong
@@ -285,7 +288,7 @@ Image not available
 👉 Fix:
 
 ```bash
-kind load docker-image myapp:v2 --name demo-cluster
+kind load docker-image myapp:v3 --name demo-cluster
 kubectl rollout restart deployment myapp
 ```
 

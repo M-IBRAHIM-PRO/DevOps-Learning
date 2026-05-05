@@ -50,8 +50,23 @@ spec:
         - name: postgres
           image: postgres:15
           env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: myapp-secret
+                  key: DB_USER
+
             - name: POSTGRES_PASSWORD
-              value: postgres
+              valueFrom:
+                secretKeyRef:
+                  name: myapp-secret
+                  key: DB_PASSWORD
+
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: myapp-config
+                  key: DB_NAME
           ports:
             - containerPort: 5432
 ```
@@ -60,10 +75,12 @@ Important details:
 
 - `name: postgres` names the Deployment
 - `app: postgres` is the label used by the Service
-- `POSTGRES_PASSWORD` sets the database password
+- `POSTGRES_USER` comes from `secret.yaml`
+- `POSTGRES_PASSWORD` comes from `secret.yaml`
+- `POSTGRES_DB` comes from `configmap.yaml`
 - `containerPort: 5432` is the normal PostgreSQL port
 
-For learning, a plain environment value is fine. In a real project, put passwords in a Kubernetes Secret.
+Important: Kubernetes Secrets are base64-encoded by default. Base64 is encoding, not encryption. In a real project, use a proper Secret Manager instead of storing real credentials directly in Git.
 
 ---
 
@@ -97,17 +114,71 @@ postgres:5432
 
 ---
 
-## Step 3 - Configure the Backend
+## Step 3 - Create Configuration
 
-The backend Deployment passes the database host as an environment variable:
+The app uses a ConfigMap for normal settings:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: myapp-config
+data:
+  DB_HOST: postgres
+  DB_NAME: postgres
+```
+
+It uses a Secret for credentials:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: myapp-secret
+type: Opaque
+stringData:
+  DB_USER: postgres
+  DB_PASSWORD: postgres
+```
+
+`stringData` is convenient for learning because you can write normal text values. Kubernetes stores Secret values as base64-encoded data.
+
+Again, base64 is not security. Use a Secret Manager for real credentials.
+
+---
+
+## Step 4 - Configure the Backend
+
+The backend Deployment reads database settings from the ConfigMap and Secret:
 
 ```yaml
 env:
   - name: DB_HOST
-    value: postgres
+    valueFrom:
+      configMapKeyRef:
+        name: myapp-config
+        key: DB_HOST
+
+  - name: DB_NAME
+    valueFrom:
+      configMapKeyRef:
+        name: myapp-config
+        key: DB_NAME
+
+  - name: DB_USER
+    valueFrom:
+      secretKeyRef:
+        name: myapp-secret
+        key: DB_USER
+
+  - name: DB_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: myapp-secret
+        key: DB_PASSWORD
 ```
 
-This works because Kubernetes DNS resolves `postgres` to the Postgres Service.
+This works because Kubernetes DNS resolves the `DB_HOST` value `postgres` to the Postgres Service.
 
 The backend app then uses that value:
 
@@ -124,12 +195,23 @@ So the same app can run in two places:
 
 ---
 
-## Step 4 - Apply the Database First
+## Step 5 - Apply Config First
+
+Apply the ConfigMap and Secret before the Deployments:
+
+```bash
+cd Kubernetes/hands-on/basic-app/k8s
+kubectl apply -f configmap.yaml
+kubectl apply -f secret.yaml
+```
+
+---
+
+## Step 6 - Apply the Database
 
 Apply PostgreSQL before the backend:
 
 ```bash
-cd Kubernetes/hands-on/basic-app/k8s
 kubectl apply -f postgres.yaml
 ```
 
@@ -149,7 +231,7 @@ postgres       ClusterIP   5432/TCP
 
 ---
 
-## Step 5 - Apply the Backend
+## Step 7 - Apply the Backend
 
 After PostgreSQL exists, deploy the backend:
 
@@ -167,7 +249,7 @@ kubectl logs deployment/myapp
 
 ---
 
-## Step 6 - Test the App
+## Step 8 - Test the App
 
 Port-forward the backend Service:
 
@@ -225,6 +307,8 @@ You should see:
 
 ```text
 DB_HOST=postgres
+DB_NAME=postgres
+DB_USER=postgres
 ```
 
 ### Check backend logs
@@ -262,8 +346,8 @@ Kubernetes will keep that name stable even if the actual Postgres Pod is recreat
 
 This setup is intentionally simple for learning. Later, improve it by adding:
 
-- A Kubernetes Secret for the password
 - A PersistentVolumeClaim so database data survives Pod restarts
 - Readiness and liveness probes for PostgreSQL
 - Separate database user and database name
 - A migration step for creating tables
+- A real Secret Manager for production credentials
