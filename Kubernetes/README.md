@@ -41,6 +41,8 @@ Kubernetes/
 |       |   `-- server.js
 |       `-- k8s/
 |           |-- kind-config.yaml
+|           |-- configmap.yaml
+|           |-- secret.yaml
 |           |-- deployment.yaml
 |           |-- service.yaml
 |           |-- ingress.yaml
@@ -48,6 +50,7 @@ Kubernetes/
 `-- notes/
     |-- debugging.md
     |-- common-errors.md
+    |-- configmap-and-secrets.md
     `-- adding-db-server.md
 ```
 
@@ -79,6 +82,8 @@ This is the Node.js backend.
 
 This folder contains the Kubernetes files:
 
+- `configmap.yaml` stores non-sensitive app configuration such as database host and database name
+- `secret.yaml` stores sensitive-looking values such as database username and password for learning
 - `postgres.yaml` runs PostgreSQL and exposes it inside the cluster
 - `deployment.yaml` runs the backend Pods
 - `service.yaml` exposes the backend Pods inside the cluster
@@ -91,6 +96,7 @@ Use these when learning or debugging:
 
 - `debugging.md` gives a step-by-step debugging workflow
 - `common-errors.md` lists common Kubernetes errors and fixes
+- `configmap-and-secrets.md` explains how ConfigMaps and Secrets are used in this app
 - `adding-db-server.md` explains how the PostgreSQL server was added
 
 ---
@@ -124,10 +130,11 @@ Follow this order:
 3. Build the backend Docker image
 4. Create a local Kubernetes cluster with Kind
 5. Load the Docker image into Kind
-6. Apply the PostgreSQL YAML
-7. Apply the backend Deployment and Service
-8. Access the app through port-forwarding or Ingress
-9. Break things intentionally and debug them using `notes/`
+6. Apply the ConfigMap and Secret
+7. Apply the PostgreSQL YAML
+8. Apply the backend Deployment and Service
+9. Access the app through port-forwarding or Ingress
+10. Break things intentionally and debug them using `notes/`
 
 This order matters because Kubernetes becomes much easier when you see each layer separately.
 
@@ -181,7 +188,7 @@ From the backend folder, build the image:
 
 ```bash
 cd Kubernetes/hands-on/basic-app/backend
-docker build -t myapp:v2 .
+docker build -t myapp:v3 .
 ```
 
 Verify:
@@ -193,7 +200,7 @@ docker images
 You should see:
 
 ```text
-myapp   v2
+myapp   v3
 ```
 
 ---
@@ -230,8 +237,35 @@ Kind runs Kubernetes inside Docker, so it cannot automatically see every image f
 Load the image:
 
 ```bash
-kind load docker-image myapp:v2 --name demo-cluster
+kind load docker-image myapp:v3 --name demo-cluster
 ```
+
+---
+
+## Create App Configuration
+
+Before deploying PostgreSQL or the backend, apply the configuration files:
+
+```bash
+kubectl apply -f configmap.yaml
+kubectl apply -f secret.yaml
+```
+
+The ConfigMap stores normal configuration:
+
+```yaml
+DB_HOST: postgres
+DB_NAME: postgres
+```
+
+The Secret stores database credentials:
+
+```yaml
+DB_USER: postgres
+DB_PASSWORD: postgres
+```
+
+Important: Kubernetes Secrets are base64-encoded by default. Base64 is encoding, not encryption. A Secret is not automatically secure just because it is a Kubernetes Secret. For real projects, use a proper Secret Manager such as HashiCorp Vault, AWS Secrets Manager, Azure Key Vault, Google Secret Manager, or an External Secrets Operator setup.
 
 ---
 
@@ -265,6 +299,29 @@ postgres
 
 Inside Kubernetes, the backend can connect to the database by using `postgres` as the host name.
 
+PostgreSQL reads its username and password from `secret.yaml`, and the database name from `configmap.yaml`:
+
+```yaml
+env:
+  - name: POSTGRES_USER
+    valueFrom:
+      secretKeyRef:
+        name: myapp-secret
+        key: DB_USER
+
+  - name: POSTGRES_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: myapp-secret
+        key: DB_PASSWORD
+
+  - name: POSTGRES_DB
+    valueFrom:
+      configMapKeyRef:
+        name: myapp-config
+        key: DB_NAME
+```
+
 ---
 
 ## Deploy the Backend
@@ -292,15 +349,36 @@ myapp-service    ClusterIP
 postgres         ClusterIP
 ```
 
-The backend Deployment sets:
+The backend Deployment reads database configuration from the ConfigMap and Secret:
 
 ```yaml
 env:
   - name: DB_HOST
-    value: postgres
+    valueFrom:
+      configMapKeyRef:
+        name: myapp-config
+        key: DB_HOST
+
+  - name: DB_NAME
+    valueFrom:
+      configMapKeyRef:
+        name: myapp-config
+        key: DB_NAME
+
+  - name: DB_USER
+    valueFrom:
+      secretKeyRef:
+        name: myapp-secret
+        key: DB_USER
+
+  - name: DB_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: myapp-secret
+        key: DB_PASSWORD
 ```
 
-That tells the backend to connect to the Kubernetes Service named `postgres`.
+That tells the backend to connect to the Kubernetes Service named `postgres` using the database credentials from the Secret.
 
 ---
 
@@ -463,8 +541,8 @@ The cluster cannot find the Docker image.
 Fix:
 
 ```bash
-docker build -t myapp:v2 ../backend
-kind load docker-image myapp:v2 --name demo-cluster
+docker build -t myapp:v3 ../backend
+kind load docker-image myapp:v3 --name demo-cluster
 kubectl rollout restart deployment myapp
 ```
 
@@ -489,7 +567,17 @@ Make sure `deployment.yaml` uses the same Service name:
 ```yaml
 env:
   - name: DB_HOST
-    value: postgres
+    valueFrom:
+      configMapKeyRef:
+        name: myapp-config
+        key: DB_HOST
+```
+
+Also make sure the ConfigMap and Secret exist:
+
+```bash
+kubectl get configmap myapp-config
+kubectl get secret myapp-secret
 ```
 
 ### 503 Service Temporarily Unavailable
@@ -534,6 +622,8 @@ kubectl delete -f ingress.yaml
 kubectl delete -f service.yaml
 kubectl delete -f deployment.yaml
 kubectl delete -f postgres.yaml
+kubectl delete -f secret.yaml
+kubectl delete -f configmap.yaml
 ```
 
 Delete the Kind cluster:

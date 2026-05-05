@@ -41,7 +41,7 @@ ImagePullBackOff
 ### ✅ Fix (Kind-specific)
 
 ```bash
-kind load docker-image myapp:v2 --name demo-cluster
+kind load docker-image myapp:v3 --name demo-cluster
 kubectl rollout restart deployment myapp
 ```
 
@@ -418,9 +418,9 @@ Image not rebuilt or not reloaded
 ### ✅ Fix
 
 ```bash
-docker build -t myapp:v2 .
-kind load docker-image myapp:v2
-kubectl set image deployment/myapp myapp=myapp:v2
+docker build -t myapp:v3 .
+kind load docker-image myapp:v3
+kubectl set image deployment/myapp myapp=myapp:v3
 ```
 
 ---
@@ -467,7 +467,10 @@ Make sure `deployment.yaml` uses the same name:
 ```yaml
 env:
   - name: DB_HOST
-    value: postgres
+    valueFrom:
+      configMapKeyRef:
+        name: myapp-config
+        key: DB_HOST
 ```
 
 ---
@@ -502,16 +505,27 @@ kubectl exec -it deployment/postgres -- psql -U postgres -c "SELECT NOW();"
 
 ### ✅ Fix
 
-For the current learning setup:
+For the current learning setup, make sure Postgres and the backend read the same Secret:
 
 ```yaml
 # postgres.yaml
 env:
+  - name: POSTGRES_USER
+    valueFrom:
+      secretKeyRef:
+        name: myapp-secret
+        key: DB_USER
+
   - name: POSTGRES_PASSWORD
-    value: postgres
+    valueFrom:
+      secretKeyRef:
+        name: myapp-secret
+        key: DB_PASSWORD
 ```
 
-The backend default password is also `postgres`, so those values must match.
+The backend should read `DB_USER` and `DB_PASSWORD` from the same `myapp-secret`.
+
+Reminder: Kubernetes Secrets are base64-encoded by default, not encrypted. Do not store real production credentials directly in Git; use a Secret Manager.
 
 ---
 
