@@ -37,6 +37,12 @@ spec:
                   name: myapp-config
                   key: DB_NAME
 
+            - name: PGDATA
+              valueFrom: 
+                configMapKeyRef:
+                  name: myapp-config
+                  key: PGDATA    
+
           ports:
             - containerPort: 5432
 

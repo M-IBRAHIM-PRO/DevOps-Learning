@@ -5,3 +5,4 @@ metadata:
 data:
   DB_HOST: postgres
   DB_NAME: postgres
+  PGDATA: /var/lib/postgresql/data/pgdata
