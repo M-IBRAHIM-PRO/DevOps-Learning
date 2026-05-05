@@ -11,7 +11,7 @@ Never guess.
 Always debug in layers:
 
 ```text
-Cluster → Ingress → Service → Pods → Container
+Cluster → Ingress → Service → Backend Pods → Database Service → Database Pods
 ```
 
 ---
@@ -157,6 +157,26 @@ http://localhost:8081
 
 ---
 
+## 🧱 Step 10 — Check PostgreSQL
+
+```bash
+kubectl get pods -l app=postgres
+kubectl get svc postgres
+kubectl get endpoints postgres
+kubectl logs deployment/postgres
+```
+
+### ✅ Expected
+
+```text
+postgres-...   Running
+postgres       ClusterIP
+```
+
+If `endpoints postgres` is empty, the Postgres Service is not connected to the Postgres Pod.
+
+---
+
 # 🔬 Advanced Debugging Techniques
 
 ---
@@ -183,6 +203,12 @@ curl localhost:3000
 printenv
 ```
 
+For the backend, confirm:
+
+```text
+DB_HOST=postgres
+```
+
 ---
 
 ## 🔍 Check Networking
@@ -191,6 +217,44 @@ printenv
 kubectl get svc
 kubectl get endpoints
 ```
+
+---
+
+## 🔍 Test Database from the Postgres Pod
+
+```bash
+kubectl exec -it deployment/postgres -- psql -U postgres -c "SELECT NOW();"
+```
+
+---
+
+# 🗄️ Database Debugging
+
+---
+
+## 🚨 Backend Cannot Connect to Postgres
+
+Check the backend logs:
+
+```bash
+kubectl logs deployment/myapp
+```
+
+Then check the database:
+
+```bash
+kubectl get pods -l app=postgres
+kubectl get svc postgres
+kubectl get endpoints postgres
+kubectl logs deployment/postgres
+```
+
+Common causes:
+
+* `DB_HOST` does not match the Service name
+* Postgres Pod is not running
+* Postgres Service selector does not match Pod labels
+* Database password is wrong
 
 ---
 
@@ -221,7 +285,8 @@ Image not available
 👉 Fix:
 
 ```bash
-kind load docker-image myapp:v1
+kind load docker-image myapp:v2 --name demo-cluster
+kubectl rollout restart deployment myapp
 ```
 
 ---

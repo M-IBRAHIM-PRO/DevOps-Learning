@@ -41,7 +41,7 @@ ImagePullBackOff
 ### ✅ Fix (Kind-specific)
 
 ```bash
-kind load docker-image myapp:v1 --name demo-cluster
+kind load docker-image myapp:v2 --name demo-cluster
 kubectl rollout restart deployment myapp
 ```
 
@@ -425,6 +425,140 @@ kubectl set image deployment/myapp myapp=myapp:v2
 
 ---
 
+# 🔴 13. Backend Cannot Find Postgres
+
+### ❌ Symptom
+
+Backend logs show:
+
+```text
+getaddrinfo ENOTFOUND postgres
+```
+
+---
+
+### 🧠 Cause
+
+The backend is trying to connect to a Service name that does not exist.
+
+---
+
+### 🔍 Debug
+
+```bash
+kubectl get svc postgres
+kubectl get endpoints postgres
+kubectl exec -it deployment/myapp -- printenv
+```
+
+---
+
+### ✅ Fix
+
+Make sure `postgres.yaml` has a Service named `postgres`:
+
+```yaml
+metadata:
+  name: postgres
+```
+
+Make sure `deployment.yaml` uses the same name:
+
+```yaml
+env:
+  - name: DB_HOST
+    value: postgres
+```
+
+---
+
+# 🔴 14. Postgres Password Authentication Failed
+
+### ❌ Symptom
+
+Backend logs show:
+
+```text
+password authentication failed
+```
+
+---
+
+### 🧠 Cause
+
+The backend is reaching PostgreSQL, but the username or password is wrong.
+
+---
+
+### 🔍 Debug
+
+```bash
+kubectl logs deployment/myapp
+kubectl logs deployment/postgres
+kubectl exec -it deployment/postgres -- psql -U postgres -c "SELECT NOW();"
+```
+
+---
+
+### ✅ Fix
+
+For the current learning setup:
+
+```yaml
+# postgres.yaml
+env:
+  - name: POSTGRES_PASSWORD
+    value: postgres
+```
+
+The backend default password is also `postgres`, so those values must match.
+
+---
+
+# 🔴 15. Postgres Service Has No Endpoints
+
+### ❌ Symptom
+
+```bash
+kubectl get endpoints postgres
+```
+
+```text
+postgres   <none>
+```
+
+---
+
+### 🧠 Cause
+
+The Postgres Service selector does not match the Postgres Pod labels.
+
+---
+
+### 🔍 Check
+
+```yaml
+# Postgres Pod labels
+labels:
+  app: postgres
+
+# Postgres Service selector
+selector:
+  app: postgres
+```
+
+---
+
+### ✅ Fix
+
+Ensure labels match exactly, then apply again:
+
+```bash
+kubectl apply -f postgres.yaml
+```
+
+---
+
 # 🧠 Golden Debug Commands
 
 Always use these:
@@ -436,6 +570,8 @@ kubectl logs <pod>
 kubectl get svc
 kubectl get endpoints
 kubectl get ingress
+kubectl logs deployment/myapp
+kubectl logs deployment/postgres
 ```
 
 ---
@@ -447,8 +583,9 @@ If something doesn’t work:
 
 1. Check pods
 2. Check service
-3. Check ingress
-4. Check cluster
+3. Check database
+4. Check ingress
+5. Check cluster
 ```
 
 ---

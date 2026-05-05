@@ -1,14 +1,14 @@
 # Kubernetes Learning Repo
 
-This repository is for someone who is learning Kubernetes from the beginning and wants a simple, practical path from concepts to a real working app.
+This repository is for learning Kubernetes from the beginning with a small practical app.
 
-The goal is not to memorize every Kubernetes object. The goal is to understand the basic flow:
+The goal is not to memorize every Kubernetes object. The goal is to understand how traffic and dependencies move through a real application:
 
 ```text
-User -> Ingress -> Service -> Pod -> Container
+User -> Ingress -> Service -> Backend Pod -> Postgres Service -> Postgres Pod
 ```
 
-In this repo, you will learn that flow using a small Node.js app, Kubernetes YAML files, and beginner-friendly notes.
+In this repo, you will learn that flow using a Node.js backend, PostgreSQL, Kubernetes YAML files, and beginner-friendly notes.
 
 ---
 
@@ -20,30 +20,35 @@ By working through this repo, you should understand:
 - Why Deployments are used instead of creating Pods directly
 - Why Services are needed
 - What Ingress does
-- How traffic reaches an application inside Kubernetes
+- How one Pod connects to another app through a Service
+- How environment variables configure containers
 - How to debug common Kubernetes problems
-- How to run a simple app on a local Kubernetes cluster using Kind
+- How to run a simple app with a database on a local Kubernetes cluster using Kind
 
 ---
 
 ## Repository Structure
 
 ```text
-.
+Kubernetes/
 |-- README.md
 |-- concepts.md
 |-- hands-on/
 |   `-- basic-app/
-|       |-- Dockerfile
-|       |-- server.js
-|       |-- package.json
-|       |-- kind-config.yaml
-|       |-- deployment.yaml
-|       |-- service.yaml
-|       `-- ingress.yaml
+|       |-- backend/
+|       |   |-- Dockerfile
+|       |   |-- package.json
+|       |   `-- server.js
+|       `-- k8s/
+|           |-- kind-config.yaml
+|           |-- deployment.yaml
+|           |-- service.yaml
+|           |-- ingress.yaml
+|           `-- postgres.yaml
 `-- notes/
     |-- debugging.md
-    `-- common-errors.md
+    |-- common-errors.md
+    `-- adding-db-server.md
 ```
 
 ### `concepts.md`
@@ -61,33 +66,32 @@ This file explains Kubernetes using a restaurant analogy:
 | Node               | Building           |
 | ConfigMap / Secret | Recipe Book        |
 
-### `hands-on/basic-app`
+### `hands-on/basic-app/backend`
 
-This is the practical part of the repo.
-
-It contains a very small Node.js application and the Kubernetes files needed to run it:
+This is the Node.js backend.
 
 - `server.js` starts a web server on port `3000`
-- `Dockerfile` builds the app image
-- `deployment.yaml` runs the app as Kubernetes Pods
-- `service.yaml` exposes the Pods inside the cluster
-- `ingress.yaml` routes browser traffic to the Service
+- `server.js` connects to PostgreSQL and returns the database time
+- `package.json` contains the `npm start` script
+- `Dockerfile` builds the backend image
+
+### `hands-on/basic-app/k8s`
+
+This folder contains the Kubernetes files:
+
+- `postgres.yaml` runs PostgreSQL and exposes it inside the cluster
+- `deployment.yaml` runs the backend Pods
+- `service.yaml` exposes the backend Pods inside the cluster
+- `ingress.yaml` routes browser traffic to the backend Service
 - `kind-config.yaml` creates a local Kind cluster with port mapping
 
-### `notes/debugging.md`
+### `notes/`
 
-Use this when something is not working and you want a step-by-step debugging flow.
+Use these when learning or debugging:
 
-### `notes/common-errors.md`
-
-Use this when you see common errors like:
-
-- `ImagePullBackOff`
-- `CrashLoopBackOff`
-- `ContainerCreating`
-- `503 Service Temporarily Unavailable`
-- Service has no endpoints
-- Ingress not working
+- `debugging.md` gives a step-by-step debugging workflow
+- `common-errors.md` lists common Kubernetes errors and fixes
+- `adding-db-server.md` explains how the PostgreSQL server was added
 
 ---
 
@@ -98,7 +102,7 @@ Before running the hands-on app, install:
 - Docker
 - kubectl
 - Kind
-- Node.js, optional for running the app locally outside Kubernetes
+- Node.js, optional for running the backend locally outside Kubernetes
 
 Check your tools:
 
@@ -116,27 +120,40 @@ node --version
 Follow this order:
 
 1. Read `concepts.md`
-2. Run the app locally with Node.js
-3. Build the Docker image
+2. Run the backend locally with Node.js
+3. Build the backend Docker image
 4. Create a local Kubernetes cluster with Kind
 5. Load the Docker image into Kind
-6. Apply the Kubernetes YAML files
-7. Access the app through Ingress
-8. Break things intentionally and debug them using `notes/`
+6. Apply the PostgreSQL YAML
+7. Apply the backend Deployment and Service
+8. Access the app through port-forwarding or Ingress
+9. Break things intentionally and debug them using `notes/`
 
 This order matters because Kubernetes becomes much easier when you see each layer separately.
 
 ---
 
-## Run the App Locally
+## Run the Backend Locally
 
-Go to the app folder:
+Go to the backend folder:
 
 ```bash
-cd hands-on/basic-app
+cd Kubernetes/hands-on/basic-app/backend
 ```
 
-Run the Node.js app:
+Install dependencies:
+
+```bash
+npm install
+```
+
+Make sure `.env` points to a local PostgreSQL database:
+
+```env
+DB_HOST=postgres://ibrahim:123456@localhost:5432/postgres?sslmode=disable
+```
+
+Run the backend:
 
 ```bash
 npm start
@@ -151,7 +168,7 @@ http://localhost:3000
 Expected response:
 
 ```text
-Hello from Kubernetes 🚀
+DB Time: <timestamp>
 ```
 
 Stop the app with `Ctrl + C`.
@@ -160,10 +177,11 @@ Stop the app with `Ctrl + C`.
 
 ## Build the Docker Image
 
-From `hands-on/basic-app`, build the image:
+From the backend folder, build the image:
 
 ```bash
-docker build -t myapp:v1 .
+cd Kubernetes/hands-on/basic-app/backend
+docker build -t myapp:v2 .
 ```
 
 Verify:
@@ -175,16 +193,17 @@ docker images
 You should see:
 
 ```text
-myapp   v1
+myapp   v2
 ```
 
 ---
 
 ## Create a Kind Cluster
 
-Create a local Kubernetes cluster:
+Create a local Kubernetes cluster from the `k8s` folder:
 
 ```bash
+cd Kubernetes/hands-on/basic-app/k8s
 kind create cluster --name demo-cluster --config kind-config.yaml
 ```
 
@@ -211,22 +230,49 @@ Kind runs Kubernetes inside Docker, so it cannot automatically see every image f
 Load the image:
 
 ```bash
-kind load docker-image myapp:v1 --name demo-cluster
+kind load docker-image myapp:v2 --name demo-cluster
 ```
 
 ---
 
-## Deploy the App to Kubernetes
+## Deploy PostgreSQL
 
-Apply the Deployment:
+Apply the database manifest:
+
+```bash
+kubectl apply -f postgres.yaml
+```
+
+Check the result:
+
+```bash
+kubectl get pods
+kubectl get svc postgres
+```
+
+Expected:
+
+```text
+postgres-...   1/1   Running
+postgres       ClusterIP   5432/TCP
+```
+
+The important part is the Service name:
+
+```text
+postgres
+```
+
+Inside Kubernetes, the backend can connect to the database by using `postgres` as the host name.
+
+---
+
+## Deploy the Backend
+
+Apply the backend Deployment and Service:
 
 ```bash
 kubectl apply -f deployment.yaml
-```
-
-Apply the Service:
-
-```bash
 kubectl apply -f service.yaml
 ```
 
@@ -240,15 +286,27 @@ kubectl get svc
 Expected:
 
 ```text
-myapp-...   1/1   Running
-myapp-service   ClusterIP
+myapp-...        1/1   Running
+postgres-...     1/1   Running
+myapp-service    ClusterIP
+postgres         ClusterIP
 ```
+
+The backend Deployment sets:
+
+```yaml
+env:
+  - name: DB_HOST
+    value: postgres
+```
+
+That tells the backend to connect to the Kubernetes Service named `postgres`.
 
 ---
 
 ## Test the Service Directly
 
-Before using Ingress, test the Service:
+Before using Ingress, test the backend Service:
 
 ```bash
 kubectl port-forward svc/myapp-service 8081:80
@@ -263,7 +321,7 @@ http://localhost:8081
 Expected:
 
 ```text
-Hello from Kubernetes 🚀
+DB Time: <timestamp>
 ```
 
 Stop port forwarding with `Ctrl + C`.
@@ -315,7 +373,7 @@ http://myapp.local:8080
 Expected response:
 
 ```text
-Hello from Kubernetes 🚀
+DB Time: <timestamp>
 ```
 
 ---
@@ -327,21 +385,22 @@ When the browser sends a request, the request travels like this:
 ```text
 Browser
   -> Ingress
-  -> Service
-  -> Pod
-  -> Container
+  -> Backend Service
+  -> Backend Pod
+  -> Postgres Service
+  -> Postgres Pod
 ```
 
 In this repo:
 
-| Layer      | File / Object        | Purpose                         |
-| ---------- | -------------------- | ------------------------------- |
-| Browser    | `myapp.local:8080`   | User entry point                |
-| Ingress    | `ingress.yaml`       | Routes traffic to the Service   |
-| Service    | `service.yaml`       | Provides stable access to Pods  |
-| Deployment | `deployment.yaml`    | Creates and manages Pods        |
-| Pod        | Created by Deployment | Runs the app container          |
-| Container  | `myapp:v1`           | Runs the Node.js server         |
+| Layer            | File / Object         | Purpose                         |
+| ---------------- | --------------------- | ------------------------------- |
+| Browser          | `myapp.local:8080`    | User entry point                |
+| Ingress          | `ingress.yaml`        | Routes traffic to backend       |
+| Backend Service  | `service.yaml`        | Provides stable access to Pods  |
+| Backend Pods     | `deployment.yaml`     | Run the Node.js container       |
+| Postgres Service | `postgres.yaml`       | Stable internal database name   |
+| Postgres Pod     | `postgres.yaml`       | Runs the PostgreSQL container   |
 
 ---
 
@@ -361,10 +420,19 @@ kubectl get nodes
 kubectl cluster-info
 ```
 
+For database checks:
+
+```bash
+kubectl get svc postgres
+kubectl logs deployment/postgres
+kubectl describe pod -l app=postgres
+kubectl exec -it deployment/postgres -- psql -U postgres -c "SELECT NOW();"
+```
+
 If the app does not work, debug in this order:
 
 ```text
-Pods -> Service -> Ingress -> Cluster
+Pods -> Services -> Database -> Ingress -> Cluster
 ```
 
 Useful checks:
@@ -382,7 +450,7 @@ If `kubectl get endpoints` shows:
 <none>
 ```
 
-then the Service is not connected to any Pods. Usually this means the labels in `deployment.yaml` and `service.yaml` do not match.
+then a Service is not connected to any Pods. Usually this means the labels in the Deployment and Service do not match.
 
 ---
 
@@ -395,14 +463,38 @@ The cluster cannot find the Docker image.
 Fix:
 
 ```bash
-docker build -t myapp:v1 .
-kind load docker-image myapp:v1 --name demo-cluster
+docker build -t myapp:v2 ../backend
+kind load docker-image myapp:v2 --name demo-cluster
 kubectl rollout restart deployment myapp
+```
+
+### Backend Cannot Connect to Postgres
+
+Check the backend logs:
+
+```bash
+kubectl logs deployment/myapp
+```
+
+Then check the database:
+
+```bash
+kubectl get pods -l app=postgres
+kubectl get svc postgres
+kubectl logs deployment/postgres
+```
+
+Make sure `deployment.yaml` uses the same Service name:
+
+```yaml
+env:
+  - name: DB_HOST
+    value: postgres
 ```
 
 ### 503 Service Temporarily Unavailable
 
-Ingress is working, but the Service has no healthy Pods.
+Ingress is working, but the Service has no healthy backend Pods.
 
 Check:
 
@@ -426,9 +518,9 @@ The YAML file alone is not enough.
 Rebuild and reload the image:
 
 ```bash
-docker build -t myapp:v2 .
-kind load docker-image myapp:v2 --name demo-cluster
-kubectl set image deployment/myapp myapp=myapp:v2
+docker build -t myapp:v3 ../backend
+kind load docker-image myapp:v3 --name demo-cluster
+kubectl set image deployment/myapp myapp=myapp:v3
 ```
 
 ---
@@ -441,6 +533,7 @@ Delete the Kubernetes resources:
 kubectl delete -f ingress.yaml
 kubectl delete -f service.yaml
 kubectl delete -f deployment.yaml
+kubectl delete -f postgres.yaml
 ```
 
 Delete the Kind cluster:
@@ -457,6 +550,7 @@ kind delete cluster --name demo-cluster
 - Kind documentation: https://kind.sigs.k8s.io/docs/
 - Kind Ingress guide: https://kind.sigs.k8s.io/docs/user/ingress/
 - ingress-nginx documentation: https://kubernetes.github.io/ingress-nginx/
+- PostgreSQL Docker image: https://hub.docker.com/_/postgres
 
 ---
 
@@ -467,8 +561,10 @@ Kubernetes is not just about running containers.
 It is about declaring the desired state:
 
 ```text
-I want 2 replicas of this app running.
-Expose them through a stable Service.
+I want PostgreSQL running.
+I want 2 replicas of this backend running.
+Expose the backend through a stable Service.
+Let the backend reach PostgreSQL through another stable Service.
 Route outside traffic through Ingress.
 Recover automatically if something fails.
 ```
@@ -478,5 +574,5 @@ Kubernetes then works continuously to keep the system close to that desired stat
 Start simple, debug layer by layer, and keep coming back to the request flow:
 
 ```text
-User -> Ingress -> Service -> Pod -> Container
+User -> Ingress -> Service -> Pod -> Service -> Pod
 ```
