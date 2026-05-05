@@ -12,28 +12,13 @@ Always debug in layers:
 
 ```text
 Cluster → Ingress → Service → Pods → Container
-````
+```
 
 ---
 
 # 🧭 End-to-End Request Flow
 
-<svg width="850" height="180" xmlns="http://www.w3.org/2000/svg">
-  <rect x="10" y="60" width="120" height="50" fill="#e3f2fd"/>
-  <text x="20" y="90">Browser</text>
-  <rect x="150" y="60" width="160" height="50" fill="#e8f5e9"/>
-  <text x="165" y="90">Ingress (Nginx)</text>
-  <rect x="330" y="60" width="130" height="50" fill="#fff3e0"/>
-  <text x="345" y="90">Service</text>
-  <rect x="480" y="40" width="110" height="40" fill="#f3e5f5"/>
-  <text x="495" y="65">Pod</text>
-  <rect x="610" y="40" width="110" height="40" fill="#ede7f6"/>
-  <text x="625" y="65">Container</text>
-  <line x1="130" y1="85" x2="150" y2="85" stroke="black"/>
-  <line x1="310" y1="85" x2="330" y2="85" stroke="black"/>
-  <line x1="460" y1="85" x2="480" y2="60" stroke="black"/>
-  <line x1="590" y1="60" x2="610" y2="60" stroke="black"/>
-</svg>
+![Kubernetes debugging request flow](../pictures/kubernetes-debugging-flow.svg)
 
 ---
 

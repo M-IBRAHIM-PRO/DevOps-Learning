@@ -1,0 +1,50 @@
+<svg width="820" height="220" viewBox="0 0 820 220" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Kubernetes request flow</title>
+  <desc id="desc">A request flows from a customer to ingress, then to service, then to one of two pods.</desc>
+
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#111827"/>
+    </marker>
+    <style>
+      .box {
+        stroke: #1f2937;
+        stroke-width: 1.5;
+        rx: 8;
+      }
+      .label {
+        fill: #111827;
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 15px;
+        font-weight: 600;
+      }
+      .line {
+        stroke: #111827;
+        stroke-width: 2;
+        marker-end: url(#arrow);
+      }
+    </style>
+  </defs>
+
+  <rect width="820" height="220" fill="#ffffff"/>
+
+  <rect class="box" x="20" y="90" width="120" height="50" fill="#e3f2fd"/>
+  <text class="label" x="80" y="121" text-anchor="middle">Customer</text>
+
+  <rect class="box" x="170" y="90" width="170" height="50" fill="#e8f5e9"/>
+  <text class="label" x="255" y="121" text-anchor="middle">Reception (Ingress)</text>
+
+  <rect class="box" x="370" y="90" width="140" height="50" fill="#fff3e0"/>
+  <text class="label" x="440" y="121" text-anchor="middle">Waiter (Service)</text>
+
+  <rect class="box" x="550" y="55" width="150" height="45" fill="#f3e5f5"/>
+  <text class="label" x="625" y="83" text-anchor="middle">Kitchen A (Pod)</text>
+
+  <rect class="box" x="550" y="125" width="150" height="45" fill="#f3e5f5"/>
+  <text class="label" x="625" y="153" text-anchor="middle">Kitchen B (Pod)</text>
+
+  <line class="line" x1="140" y1="115" x2="167" y2="115"/>
+  <line class="line" x1="340" y1="115" x2="367" y2="115"/>
+  <line class="line" x1="510" y1="115" x2="546" y2="82"/>
+  <line class="line" x1="510" y1="115" x2="546" y2="145"/>
+</svg>

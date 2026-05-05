@@ -6,22 +6,7 @@ This document explains the **6 most important Kubernetes concepts** using a rest
 
 ## 🧠 Big Picture
 
-<svg width="820" height="220" xmlns="http://www.w3.org/2000/svg">
-  <rect x="20" y="90" width="120" height="50" fill="#e3f2fd"/>
-  <text x="30" y="120">Customer</text>
-  <rect x="170" y="90" width="170" height="50" fill="#e8f5e9"/>
-  <text x="185" y="120">Reception (Ingress)</text>
-  <rect x="370" y="90" width="140" height="50" fill="#fff3e0"/>
-  <text x="385" y="120">Waiter (Service)</text>
-  <rect x="540" y="60" width="120" height="40" fill="#f3e5f5"/>
-  <text x="550" y="85">Kitchen A (Pod)</text>
-  <rect x="540" y="120" width="120" height="40" fill="#f3e5f5"/>
-  <text x="550" y="145">Kitchen B (Pod)</text>
-  <line x1="140" y1="115" x2="170" y2="115" stroke="black"/>
-  <line x1="340" y1="115" x2="370" y2="115" stroke="black"/>
-  <line x1="510" y1="115" x2="540" y2="80" stroke="black"/>
-  <line x1="510" y1="115" x2="540" y2="140" stroke="black"/>
-</svg>
+![Kubernetes request flow](pictures/kubernetes-request-flow.svg)
 
 ---
 
@@ -40,7 +25,7 @@ A **kitchen** where food is prepared.
 ### ⚠️ Important
 ```text
 Pods are ephemeral → they can die and be recreated anytime
-````
+```
 
 ---
 
