@@ -9,29 +9,22 @@ CI = Continuous Integration
 CD = Continuous Deployment / Delivery
 ```
 
-In simple words:
-
-```text
-When you push code to GitHub,
-GitHub Actions can automatically build your app,
-push the Docker image,
-and later deploy it to Kubernetes.
-```
+In this project, GitHub Actions now builds the backend Docker image, pushes it to Docker Hub, connects to Google Kubernetes Engine, and applies the Kubernetes manifests.
 
 ---
 
 ## What Was Added
 
-A GitHub Actions workflow was added here:
+A GitHub Actions workflow exists here:
 
 ```text
 .github/workflows/deploy.yaml
 ```
 
-This workflow is named:
+The workflow is named:
 
 ```yaml
-name: Build and Deploy to Kubernetes
+name: Build and Deploy to GKE
 ```
 
 It runs when code is pushed to the `master` branch:
@@ -65,24 +58,105 @@ That job runs on a GitHub-hosted Ubuntu machine:
 runs-on: ubuntu-latest
 ```
 
-Think of this as a temporary computer created by GitHub just to run your pipeline.
+The job also requests these permissions:
+
+```yaml
+permissions:
+  contents: read
+  id-token: write
+```
+
+`contents: read` lets the workflow read the repository code.
+
+`id-token: write` lets GitHub Actions request an OpenID Connect token, which is required for Google Cloud Workload Identity Federation.
 
 ---
 
 ## Step 1 - Checkout Code
 
 ```yaml
-- name: Checkout code
+- name: Checkout
   uses: actions/checkout@v4
 ```
 
 This downloads your repository code into the GitHub Actions runner.
 
-Without this step, the pipeline would not have access to your files.
+Without this step, the pipeline would not have access to your Dockerfile, backend code, or Kubernetes YAML files.
 
 ---
 
-## Step 2 - Login to Docker Hub
+## Step 2 - Authenticate to Google Cloud
+
+```yaml
+- name: Authenticate to GCP
+  uses: google-github-actions/auth@v2
+```
+
+The workflow uses Workload Identity Federation instead of storing a Google Cloud service account key file in GitHub.
+
+It expects these GitHub Secrets:
+
+| Secret Name | Purpose |
+| ----------- | ------- |
+| `PROJECT_NUMBER` | Google Cloud project number used in the Workload Identity Provider path |
+| `PROJECT_ID` | Google Cloud project ID used for the service account and GKE commands |
+
+The workflow authenticates as this service account:
+
+```text
+github-actions@<PROJECT_ID>.iam.gserviceaccount.com
+```
+
+The Workload Identity Provider path is:
+
+```text
+projects/<PROJECT_NUMBER>/locations/global/workloadIdentityPools/github-pool/providers/github-provider
+```
+
+---
+
+## Step 3 - Set Up `gcloud`
+
+```yaml
+- name: Setup gcloud
+  uses: google-github-actions/setup-gcloud@v2
+```
+
+This installs and configures the Google Cloud CLI on the GitHub Actions runner.
+
+The workflow then installs the GKE authentication plugin:
+
+```yaml
+gcloud components install gke-gcloud-auth-plugin --quiet
+```
+
+This plugin allows `kubectl` to authenticate to GKE using Google Cloud credentials.
+
+---
+
+## Step 4 - Get GKE Credentials
+
+```yaml
+gcloud container clusters get-credentials devops-cluster \
+  --region asia-south1 \
+  --project ${{ secrets.PROJECT_ID }}
+```
+
+This connects the GitHub Actions runner to the GKE cluster.
+
+Current cluster settings:
+
+| Setting | Value |
+| ------- | ----- |
+| Cluster name | `devops-cluster` |
+| Region | `asia-south1` |
+| Project | `${{ secrets.PROJECT_ID }}` |
+
+After this step, `kubectl` can apply manifests to the GKE cluster.
+
+---
+
+## Step 5 - Login to Docker Hub
 
 ```yaml
 - name: Login to Docker Hub
@@ -96,15 +170,7 @@ username: ${{ secrets.DOCKER_USERNAME }}
 password: ${{ secrets.DOCKER_PASSWORD }}
 ```
 
-These values should not be written directly in the workflow file.
-
-They must be stored in GitHub:
-
-```text
-Repository -> Settings -> Secrets and variables -> Actions
-```
-
-Required secrets:
+Required Docker Hub secrets:
 
 | Secret Name | Purpose |
 | ----------- | ------- |
@@ -115,7 +181,7 @@ For Docker Hub, an access token is better than using your real account password.
 
 ---
 
-## Step 3 - Build Docker Image
+## Step 6 - Build Docker Image
 
 ```yaml
 docker build -t ${{ secrets.DOCKER_USERNAME }}/myapp:latest ./Kubernetes/hands-on/basic-app/backend
@@ -141,7 +207,7 @@ ibrahim/myapp:latest
 
 ---
 
-## Step 4 - Push Docker Image
+## Step 7 - Push Docker Image
 
 ```yaml
 docker push ${{ secrets.DOCKER_USERNAME }}/myapp:latest
@@ -149,66 +215,61 @@ docker push ${{ secrets.DOCKER_USERNAME }}/myapp:latest
 
 This uploads the image to Docker Hub.
 
-After this step, the image is available outside your local machine.
-
-That matters because a remote Kubernetes cluster cannot use images that only exist on your laptop.
+After this step, the image is available to the GKE cluster.
 
 ---
 
-## Step 5 - Set Up `kubectl`
+## Step 8 - Deploy to Kubernetes
+
+The workflow applies each Kubernetes manifest:
 
 ```yaml
-- name: Set up kubectl
-  uses: azure/setup-kubectl@v4
+kubectl apply -f Kubernetes/hands-on/basic-app/k8s/configmap.yaml
+kubectl apply -f Kubernetes/hands-on/basic-app/k8s/secret.yaml
+kubectl apply -f Kubernetes/hands-on/basic-app/k8s/postgres.yaml
+kubectl apply -f Kubernetes/hands-on/basic-app/k8s/deployment.yaml
+kubectl apply -f Kubernetes/hands-on/basic-app/k8s/service.yaml
+kubectl apply -f Kubernetes/hands-on/basic-app/k8s/ingress.yaml
 ```
 
-This installs `kubectl` in the GitHub Actions runner.
+Then it restarts the application deployment:
 
-`kubectl` is the command-line tool used to talk to Kubernetes.
+```yaml
+kubectl rollout restart deployment myapp
+```
+
+This makes Kubernetes pull and run the latest `myapp:latest` image.
 
 ---
 
-## Step 6 - Prepare Kubeconfig
+## Step 9 - Verify Deployment
 
 ```yaml
-echo "${{ secrets.KUBE_CONFIG }}" > kubeconfig
-export KUBECONFIG=$PWD/kubeconfig
+kubectl rollout status deployment myapp
 ```
 
-The idea is to store Kubernetes cluster access inside a GitHub Secret named:
+This waits for the `myapp` deployment rollout to complete.
+
+If the rollout fails, the GitHub Actions workflow fails too.
+
+---
+
+## Required GitHub Secrets
+
+Store these values in:
 
 ```text
-KUBE_CONFIG
+Repository -> Settings -> Secrets and variables -> Actions
 ```
 
-This secret would contain the kubeconfig file for a real Kubernetes cluster.
+| Secret Name | Purpose |
+| ----------- | ------- |
+| `PROJECT_ID` | Google Cloud project ID |
+| `PROJECT_NUMBER` | Google Cloud project number |
+| `DOCKER_USERNAME` | Docker Hub username |
+| `DOCKER_PASSWORD` | Docker Hub password or access token |
 
-Important: kubeconfig is sensitive. Anyone with that file may be able to control your cluster, depending on its permissions.
-
----
-
-## Step 7 - Deploy Step Is Skipped For Now
-
-Right now, the real deploy command is commented out:
-
-```yaml
-# kubectl apply -f Kubernetes/hands-on/basic-app/k8s/
-# kubectl rollout restart deployment myapp
-```
-
-The workflow currently runs this instead:
-
-```yaml
-echo "Deployment skipped - no remote cluster configured"
-```
-
-That means the current pipeline does this:
-
-```text
-Build Docker image -> Push image to Docker Hub -> Stop before real deployment
-```
-
-This is okay for now because you do not have a remote Kubernetes cluster connected yet.
+No `KUBE_CONFIG` secret is required in the current workflow because the pipeline connects to GKE through Google Cloud authentication.
 
 ---
 
@@ -224,6 +285,15 @@ GitHub Actions starts
 Checkout repository
         |
         v
+Authenticate to Google Cloud with Workload Identity Federation
+        |
+        v
+Set up gcloud and install the GKE auth plugin
+        |
+        v
+Get credentials for devops-cluster in asia-south1
+        |
+        v
 Login to Docker Hub
         |
         v
@@ -233,63 +303,36 @@ Build backend Docker image
 Push image to Docker Hub
         |
         v
-Set up kubectl
+Apply Kubernetes manifests to GKE
         |
         v
-Deployment skipped for now
+Restart and verify the myapp deployment
 ```
 
 ---
 
-## Important Beginner Notes
+## Important Notes
 
-This pipeline does not deploy to your local Kind cluster.
+This pipeline deploys to Google Kubernetes Engine, not to a local Kind cluster.
 
-Kind runs on your local machine. GitHub Actions runs on GitHub's machine. GitHub cannot automatically access your local Kind cluster.
+Kind runs on your local machine. GitHub Actions runs on GitHub's machine. GitHub Actions cannot directly deploy to your local Kind cluster unless you add a special connection mechanism.
 
-That is why the next real step is to use a cloud Kubernetes cluster.
-
----
-
-## Next Step - Deploy to Google Cloud Platform
-
-The next step will be to deploy this app to Google Cloud Platform.
-
-Most likely, that means using:
+The current CD flow is real:
 
 ```text
-Google Kubernetes Engine
+Push to master -> Build image -> Push to Docker Hub -> Deploy to GKE
 ```
-
-GKE is Google Cloud's managed Kubernetes service.
-
-The future flow will look like this:
-
-```text
-Push code to GitHub
-GitHub Actions builds Docker image
-GitHub Actions pushes image to a registry
-GitHub Actions connects to GKE
-GitHub Actions applies Kubernetes YAML files
-App runs on Google Cloud Platform
-```
-
-At that point, the skipped deploy step can become a real deploy step.
 
 ---
 
 ## Mental Model
 
-For now:
+For this repository:
 
 ```text
-CI is mostly working.
-CD is prepared, but not connected to a real cluster yet.
-```
-
-Next:
-
-```text
-Connect GitHub Actions to Google Cloud Platform.
-Deploy Kubernetes manifests to GKE.
+GitHub Actions is the automation engine.
+Docker Hub stores the application image.
+Google Cloud authenticates the workflow.
+GKE runs the Kubernetes workload.
+kubectl applies the manifests and checks the rollout.
 ```
