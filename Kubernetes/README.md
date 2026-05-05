@@ -51,6 +51,7 @@ Kubernetes/
     |-- debugging.md
     |-- common-errors.md
     |-- configmap-and-secrets.md
+    |-- persistent-postgres-data.md
     `-- adding-db-server.md
 ```
 
@@ -97,6 +98,7 @@ Use these when learning or debugging:
 - `debugging.md` gives a step-by-step debugging workflow
 - `common-errors.md` lists common Kubernetes errors and fixes
 - `configmap-and-secrets.md` explains how ConfigMaps and Secrets are used in this app
+- `persistent-postgres-data.md` explains how PostgreSQL data survives Pod restarts
 - `adding-db-server.md` explains how the PostgreSQL server was added
 
 ---
@@ -282,6 +284,7 @@ Check the result:
 ```bash
 kubectl get pods
 kubectl get svc postgres
+kubectl get pvc postgres-pvc
 ```
 
 Expected:
@@ -289,6 +292,7 @@ Expected:
 ```text
 postgres-...   1/1   Running
 postgres       ClusterIP   5432/TCP
+postgres-pvc   Bound
 ```
 
 The important part is the Service name:
@@ -321,6 +325,21 @@ env:
         name: myapp-config
         key: DB_NAME
 ```
+
+PostgreSQL also uses a PersistentVolumeClaim named `postgres-pvc`:
+
+```yaml
+volumeMounts:
+  - name: postgres-storage
+    mountPath: /var/lib/postgresql/data
+
+volumes:
+  - name: postgres-storage
+    persistentVolumeClaim:
+      claimName: postgres-pvc
+```
+
+That means the database files live on persistent storage, not only inside the temporary Pod filesystem.
 
 ---
 
@@ -479,6 +498,7 @@ In this repo:
 | Backend Pods     | `deployment.yaml`     | Run the Node.js container       |
 | Postgres Service | `postgres.yaml`       | Stable internal database name   |
 | Postgres Pod     | `postgres.yaml`       | Runs the PostgreSQL container   |
+| Postgres PVC     | `postgres.yaml`       | Keeps database files persistent |
 
 ---
 
@@ -505,6 +525,7 @@ kubectl get svc postgres
 kubectl logs deployment/postgres
 kubectl describe pod -l app=postgres
 kubectl exec -it deployment/postgres -- psql -U postgres -c "SELECT NOW();"
+kubectl get pvc postgres-pvc
 ```
 
 If the app does not work, debug in this order:

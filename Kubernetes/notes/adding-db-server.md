@@ -114,7 +114,44 @@ postgres:5432
 
 ---
 
-## Step 3 - Create Configuration
+## Step 3 - Add Persistent Storage
+
+A normal Pod filesystem is temporary. If the Postgres Pod is deleted and recreated, data stored only inside the Pod can disappear.
+
+To keep database files, `postgres.yaml` uses a PersistentVolumeClaim:
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+
+  resources:
+    requests:
+      storage: 1Gi
+```
+
+The Postgres container mounts that storage at the PostgreSQL data directory:
+
+```yaml
+volumeMounts:
+  - name: postgres-storage
+    mountPath: /var/lib/postgresql/data
+
+volumes:
+  - name: postgres-storage
+    persistentVolumeClaim:
+      claimName: postgres-pvc
+```
+
+Now the Pod can be replaced, but the database files stay attached to the PVC.
+
+---
+
+## Step 4 - Create Configuration
 
 The app uses a ConfigMap for normal settings:
 
@@ -147,7 +184,7 @@ Again, base64 is not security. Use a Secret Manager for real credentials.
 
 ---
 
-## Step 4 - Configure the Backend
+## Step 5 - Configure the Backend
 
 The backend Deployment reads database settings from the ConfigMap and Secret:
 
@@ -195,7 +232,7 @@ So the same app can run in two places:
 
 ---
 
-## Step 5 - Apply Config First
+## Step 6 - Apply Config First
 
 Apply the ConfigMap and Secret before the Deployments:
 
@@ -207,7 +244,7 @@ kubectl apply -f secret.yaml
 
 ---
 
-## Step 6 - Apply the Database
+## Step 7 - Apply the Database
 
 Apply PostgreSQL before the backend:
 
@@ -220,6 +257,7 @@ Check it:
 ```bash
 kubectl get pods -l app=postgres
 kubectl get svc postgres
+kubectl get pvc postgres-pvc
 ```
 
 Expected:
@@ -231,7 +269,7 @@ postgres       ClusterIP   5432/TCP
 
 ---
 
-## Step 7 - Apply the Backend
+## Step 8 - Apply the Backend
 
 After PostgreSQL exists, deploy the backend:
 
@@ -249,7 +287,7 @@ kubectl logs deployment/myapp
 
 ---
 
-## Step 8 - Test the App
+## Step 9 - Test the App
 
 Port-forward the backend Service:
 
@@ -346,7 +384,6 @@ Kubernetes will keep that name stable even if the actual Postgres Pod is recreat
 
 This setup is intentionally simple for learning. Later, improve it by adding:
 
-- A PersistentVolumeClaim so database data survives Pod restarts
 - Readiness and liveness probes for PostgreSQL
 - Separate database user and database name
 - A migration step for creating tables
