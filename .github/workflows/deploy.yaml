@@ -35,7 +35,10 @@ jobs:
           echo "${{ secrets.KUBE_CONFIG }}" > kubeconfig
           export KUBECONFIG=$PWD/kubeconfig
 
+      # - name: Deploy to Kubernetes
+      #   run: |
+      #     kubectl apply -f Kubernetes/hands-on/basic-app/k8s/
+      #     kubectl rollout restart deployment myapp
       - name: Deploy to Kubernetes
         run: |
-          kubectl apply -f Kubernetes/hands-on/basic-app/k8s/
-          kubectl rollout restart deployment myapp
+          echo "Deployment skipped - no remote cluster configured"
