@@ -52,7 +52,14 @@ jobs:
 
       - name: Deploy to Kubernetes
         run: |
-          kubectl apply -f Kubernetes/hands-on/basic-app/k8s/
+          - name: Deploy to Kubernetes
+          kubectl apply -f Kubernetes/hands-on/basic-app/k8s/configmap.yaml
+          kubectl apply -f Kubernetes/hands-on/basic-app/k8s/secret.yaml
+          kubectl apply -f Kubernetes/hands-on/basic-app/k8s/postgres.yaml
+          kubectl apply -f Kubernetes/hands-on/basic-app/k8s/deployment.yaml
+          kubectl apply -f Kubernetes/hands-on/basic-app/k8s/service.yaml
+          kubectl apply -f Kubernetes/hands-on/basic-app/k8s/ingress.yaml
+
           kubectl rollout restart deployment myapp
 
       - name: Verify Deployment
