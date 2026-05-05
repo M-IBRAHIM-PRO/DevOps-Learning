@@ -52,7 +52,6 @@ jobs:
 
       - name: Deploy to Kubernetes
         run: |
-          - name: Deploy to Kubernetes
           kubectl apply -f Kubernetes/hands-on/basic-app/k8s/configmap.yaml
           kubectl apply -f Kubernetes/hands-on/basic-app/k8s/secret.yaml
           kubectl apply -f Kubernetes/hands-on/basic-app/k8s/postgres.yaml
