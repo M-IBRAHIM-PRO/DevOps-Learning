@@ -2,6 +2,9 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: myapp
+  labels:
+    app: myapp
+    tier: backend
 spec:
   replicas: 2
   selector:
@@ -14,9 +17,12 @@ spec:
     spec:
       containers:
         - name: myapp
-          image: myapp:v1
+          image: myapp:v2
           ports:
             - containerPort: 3000
+          env:
+            - name: DB_HOST
+              value: postgres  
           readinessProbe:
               httpGet:
                 path: /
