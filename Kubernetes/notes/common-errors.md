@@ -573,6 +573,65 @@ kubectl apply -f postgres.yaml
 
 ---
 
+# 🔴 16. Postgres Data Disappears After Pod Restart
+
+### ❌ Symptom
+
+You create a table or insert data, delete the Postgres Pod, and the data is gone after Kubernetes creates a new Pod.
+
+---
+
+### 🧠 Cause
+
+Postgres is not writing to persistent storage, or the PersistentVolumeClaim is not attached correctly.
+
+---
+
+### 🔍 Debug
+
+```bash
+kubectl get pvc postgres-pvc
+kubectl describe pvc postgres-pvc
+kubectl describe pod -l app=postgres
+```
+
+The PVC should show:
+
+```text
+Bound
+```
+
+Also check that `postgres.yaml` mounts the PVC at the Postgres data directory:
+
+```yaml
+volumeMounts:
+  - name: postgres-storage
+    mountPath: /var/lib/postgresql/data
+```
+
+---
+
+### ✅ Fix
+
+Make sure the Pod uses the same claim name as the PVC:
+
+```yaml
+volumes:
+  - name: postgres-storage
+    persistentVolumeClaim:
+      claimName: postgres-pvc
+```
+
+Then apply again:
+
+```bash
+kubectl apply -f postgres.yaml
+```
+
+Test persistence by inserting data, deleting only the Pod, and selecting the data again. Do not delete the PVC while testing persistence.
+
+---
+
 # 🧠 Golden Debug Commands
 
 Always use these:
@@ -584,6 +643,7 @@ kubectl logs <pod>
 kubectl get svc
 kubectl get endpoints
 kubectl get ingress
+kubectl get pvc
 kubectl logs deployment/myapp
 kubectl logs deployment/postgres
 ```
